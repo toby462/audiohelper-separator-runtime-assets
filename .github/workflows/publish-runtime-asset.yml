@@ -1,0 +1,42 @@
+name: Publish verified runtime asset
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download and verify immutable dependency archive
+        env:
+          ASSET_URL: https://separator.audiohelper.de/runtime-transfer/9f2c71eab4d6/python-layer-audio-separator-0.44.5-py312-linux-x86_64.tar.gz
+          ASSET_NAME: python-layer-audio-separator-0.44.5-py312-linux-x86_64.tar.gz
+          EXPECTED_SIZE: '394918064'
+          EXPECTED_SHA256: f6efa38e1ed07b7e6858c5bc278ceeae85cde105e3acc116e86e647831ab05d8
+        run: |
+          set -euo pipefail
+          curl --fail --location --connect-timeout 20 --max-time 900 --retry 5 --retry-all-errors "$ASSET_URL" -o "$ASSET_NAME"
+          test "$(stat -c %s "$ASSET_NAME")" = "$EXPECTED_SIZE"
+          printf '%s  %s\n' "$EXPECTED_SHA256" "$ASSET_NAME" | sha256sum --check --strict
+      - name: Publish immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: audio-separator-0.44.5-py312-20260818
+          ASSET_NAME: python-layer-audio-separator-0.44.5-py312-linux-x86_64.tar.gz
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<'EOF'
+          Immutable, secret-free Python dependency archive for verified AudioHelper Separator RunPod cold starts.
+
+          - Size: `394918064` bytes
+          - SHA-256: `f6efa38e1ed07b7e6858c5bc278ceeae85cde105e3acc116e86e647831ab05d8`
+          - Target: Ubuntu 24.04 / Python 3.12 / x86_64
+          - Contains no application source, credentials, license keys, worker tokens, SFTP configuration or rclone configuration.
+
+          Consumers must verify exact size and SHA-256 before extraction.
+          EOF
+          gh release create "$TAG" "$ASSET_NAME" --repo "$GITHUB_REPOSITORY" --title "Audio Separator 0.44.5 · Python 3.12 Linux runtime" --notes-file release-notes.md
